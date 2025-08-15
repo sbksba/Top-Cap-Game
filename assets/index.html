@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top-Cap Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to enhance the look and feel */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            grid-template-rows: repeat(7, 1fr);
+            gap: 2px;
+            aspect-ratio: 1 / 1;
+        }
+        .cell {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .cell.highlight {
+            border: 3px solid yellow;
+            box-shadow: 0 0 10px yellow;
+        }
+        .piece {
+            width: 80%;
+            height: 80%;
+            border-radius: 9999px; /* Tailwind's rounded-full */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .piece:hover {
+            transform: scale(1.1);
+        }
+        .piece.p1 {
+            background-color: #ef4444; /* Tailwind's red-500 */
+        }
+        .piece.p2 {
+            background-color: #3b82f6; /* Tailwind's blue-500 */
+        }
+        /* Modal-specific styles */
+        .modal {
+            background-color: rgba(0, 0, 0, 0.75);
+        }
+        /* Game Mode Selection styles */
+        .game-mode-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-800 flex items-center justify-center min-h-screen p-4">
+
+    <div id="rulesModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal">
+        <div class="bg-gray-700 text-white rounded-lg p-6 shadow-xl max-w-lg w-full">
+            <h2 class="text-2xl font-bold mb-4">How to Play Top-Cap</h2>
+            <ul class="list-disc list-inside space-y-2 text-gray-300">
+                <li>**Objective:** Be the first player to move one of your pieces to the opponent's **goal square**.</li>
+                <li>**Goal Squares:** Player 1's (🔴) goal is the top-left corner **(A1 / 0,0)**. Player 2's (🔵) goal is the bottom-right corner **(G7 / 6,6)**.</li>
+                <li>**Movement:** On your turn, select one of your pieces. It can move a number of spaces equal to the number of pieces **directly adjacent** to it (horizontally, vertically, or diagonally).</li>
+                <li>**Move Path:** The piece must move in a **straight, unobstructed line** in any of the 8 directions. The destination square must be empty.</li>
+                <li>**Winning:** You win if you capture the opponent's goal or if the opponent has **no valid moves left**.</li>
+            </ul>
+            <button id="closeModalButton" class="mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-full w-full">Got It!</button>
+        </div>
+    </div>
+    
+    <div id="modeSelection" class="game-mode-container">
+        <h1 class="text-4xl font-bold text-gray-200 mb-6">Choose Game Mode</h1>
+        <div class="space-y-4">
+            <button id="soloModeButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-colors duration-200 w-full">
+                Player vs. AI
+            </button>
+            <button id="twoPlayerModeButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-colors duration-200 w-full">
+                Player vs. Player
+            </button>
+        </div>
+    </div>
+
+    <div id="gameContainer" class="bg-gray-600 p-2 rounded-xl shadow-2xl max-w-xl w-full flex-col items-center space-y-6 hidden">
+        <h1 class="text-4xl font-bold text-gray-200">Top-Cap Game</h1>
+        <div class="text-xl font-semibold text-gray-400 flex items-center space-x-2">
+            <span id="gameStatus">Loading...</span>
+            <span id="currentPlayerIcon" class="w-6 h-6 rounded-full"></span>
+        </div>
+        <div id="gameBoard" class="board-grid bg-gray-600 rounded-lg shadow-inner w-full">
+            </div>
+        <div class="flex flex-col items-center space-y-4 w-full">
+            <button id="resetButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-full shadow-lg transition-colors duration-200">
+                Reset Game
+            </button>
+            <div id="messageBox" class="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 p-4 rounded-lg w-full hidden">
+                <p id="messageText"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:3000";
+        let selectedPiece = null;
+        let currentPlayer = null;
+        let gameMode = 'two-player'; // Default to two-player mode
+
+        // UI Elements
+        const boardElement = document.getElementById('gameBoard');
+        const statusElement = document.getElementById('gameStatus');
+        const playerIconElement = document.getElementById('currentPlayerIcon');
+        const resetButton = document.getElementById('resetButton');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const rulesModal = document.getElementById('rulesModal');
+        const closeModalButton = document.getElementById('closeModalButton');
+        const modeSelection = document.getElementById('modeSelection');
+        const gameContainer = document.getElementById('gameContainer');
+        const soloModeButton = document.getElementById('soloModeButton');
+        const twoPlayerModeButton = document.getElementById('twoPlayerModeButton');
+
+        // Function to display a temporary message to the user
+        function showMessage(text, type = 'info') {
+            messageText.textContent = text;
+            messageBox.className = 'p-4 rounded-lg w-full';
+            
+            // Set colors based on message type
+            switch (type) {
+                case 'success':
+                    messageBox.classList.add('bg-green-100', 'text-green-800', 'border-l-4', 'border-green-500');
+                    break;
+                case 'error':
+                    messageBox.classList.add('bg-red-100', 'text-red-800', 'border-l-4', 'border-red-500');
+                    break;
+                case 'info':
+                default:
+                    messageBox.classList.add('bg-yellow-100', 'text-yellow-800', 'border-l-4', 'border-yellow-500');
+                    break;
+            }
+            messageBox.style.display = 'block';
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 3000);
+        }
+
+        // Fetches the current game state from the Rust server
+        async function fetchBoardState() {
+            try {
+                const response = await fetch(`${API_URL}/board`);
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                const game = await response.json();
+                renderBoard(game);
+                updateGameStatus(game);
+                return game;
+            } catch (error) {
+                console.error("Failed to fetch board state:", error);
+                showMessage("Failed to connect to the server. Is it running?", 'error');
+            }
+        }
+
+        // Renders the game board based on the game state
+        function renderBoard(game) {
+            boardElement.innerHTML = '';
+            game.board.forEach((row, rowIndex) => {
+                row.forEach((player, colIndex) => {
+                    const cell = document.createElement('div');
+                    const cellColor = (rowIndex + colIndex) % 2 === 0 ? 'bg-gray-700' : 'bg-gray-500';
+                    cell.className = `cell ${cellColor} rounded-md`;
+                    
+                    cell.dataset.row = rowIndex;
+                    cell.dataset.col = colIndex;
+
+                    // Add a piece if one exists on this cell
+                    if (player !== null) {
+                        const piece = document.createElement('div');
+                        piece.className = `piece ${player === 'P1' ? 'p1' : 'p2'}`;
+                        cell.appendChild(piece);
+                    }
+
+                    cell.addEventListener('click', handleBoardClick);
+                    boardElement.appendChild(cell);
+                });
+            });
+        }
+
+        // Updates the game status display
+        function updateGameStatus(game) {
+            currentPlayer = game.current_player;
+            if (game.status === 'Ongoing') {
+                statusElement.textContent = `Player ${currentPlayer === 'P1' ? '1' : '2'}'s turn`;
+                playerIconElement.className = `w-6 h-6 rounded-full ${currentPlayer === 'P1' ? 'bg-red-500' : 'bg-blue-500'}`;
+            } else {
+                const winner = game.status.Won;
+                if (winner) {
+                    statusElement.textContent = `Player ${winner === 'P1' ? '1' : '2'} wins!`;
+                    playerIconElement.className = `w-6 h-6 rounded-full ${winner === 'P1' ? 'bg-red-500' : 'bg-blue-500'}`;
+                }
+            }
+        }
+
+        // Handles a click on the board
+        function handleBoardClick(event) {
+            const cell = event.currentTarget;
+            const row = parseInt(cell.dataset.row);
+            const col = parseInt(cell.dataset.col);
+
+            // If a piece is already selected, this is a move attempt
+            if (selectedPiece) {
+                makeMove(selectedPiece.row, selectedPiece.col, row, col);
+                selectedPiece = null;
+                document.querySelectorAll('.cell').forEach(c => c.classList.remove('highlight'));
+            } else {
+                // This is a piece selection
+                const pieceElement = cell.querySelector('.piece');
+                if (pieceElement) {
+                    const isP1 = pieceElement.classList.contains('p1');
+                    const piecePlayer = isP1 ? 'P1' : 'P2';
+
+                    // Only allow selecting your own pieces
+                    if (piecePlayer === currentPlayer) {
+                        selectedPiece = { row, col };
+                        document.querySelectorAll('.cell').forEach(c => c.classList.remove('highlight'));
+                        cell.classList.add('highlight');
+                    }
+                }
+            }
+        }
+
+        // Sends a move request to the server
+        async function makeMove(fromRow, fromCol, toRow, toCol) {
+            const moveRequest = {
+                from: { row: fromRow, col: fromCol },
+                to: { row: toRow, col: toCol }
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/move`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(moveRequest),
+                });
+                
+                if (!response.ok) {
+                    const message = await response.text();
+                    showMessage(message, 'error');
+                }
+                
+                const game = await fetchBoardState();
+                
+                // Only make AI move if in solo mode and it's the AI's turn
+                if (gameMode === 'solo' && game && game.current_player === 'P2' && game.status === 'Ongoing') {
+                    setTimeout(makeAiMove, 500); 
+                }
+
+            } catch (error) {
+                console.error("Failed to make move:", error);
+                showMessage("Failed to connect to the server.", 'error');
+            }
+        }
+
+        // New function to trigger the AI's move
+        async function makeAiMove() {
+            showMessage("AI is thinking...", "info");
+            try {
+                const response = await fetch(`${API_URL}/ai-move`, {
+                    method: 'POST',
+                });
+                
+                await fetchBoardState();
+
+            } catch (error) {
+                console.error("AI failed to make move:", error);
+                showMessage("AI failed to make a move.", 'error');
+            }
+        }
+
+        // Resets the game by calling the server's reset endpoint
+        async function resetGame() {
+            try {
+                const response = await fetch(`${API_URL}/reset`, {
+                    method: 'POST',
+                });
+                const message = await response.text();
+                if (!response.ok) {
+                    showMessage(message, 'error');
+                }
+                await fetchBoardState();
+                // If in solo mode, let AI take its turn
+                if (gameMode === 'solo' && currentPlayer === 'P2') {
+                    setTimeout(makeAiMove, 500);
+                }
+            } catch (error) {
+                console.error("Failed to reset game:", error);
+                showMessage("Failed to connect to the server.", 'error');
+            }
+        }
+
+        // Event listener for the reset button
+        resetButton.addEventListener('click', resetGame);
+
+        // Event listener to close the rules modal
+        closeModalButton.addEventListener('click', () => {
+            rulesModal.style.display = 'none';
+        });
+
+        // Event listeners for mode selection
+        soloModeButton.addEventListener('click', () => {
+            gameMode = 'solo';
+            modeSelection.classList.add('hidden');
+            gameContainer.classList.remove('hidden');
+            fetchBoardState();
+        });
+
+        twoPlayerModeButton.addEventListener('click', () => {
+            gameMode = 'two-player';
+            modeSelection.classList.add('hidden');
+            gameContainer.classList.remove('hidden');
+            fetchBoardState();
+        });
+
+        // Initial check on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Show the rules modal first
+            rulesModal.style.display = 'flex';
+        });
+    </script>
+</body>
+</html>
