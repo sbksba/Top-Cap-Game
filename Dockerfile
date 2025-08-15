@@ -6,7 +6,7 @@ FROM rust:1.88-slim as builder
 WORKDIR /app
 
 # Copy the Cargo files to take advantage of Docker's caching.
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 
 # Copy the source code.
 COPY src ./src
