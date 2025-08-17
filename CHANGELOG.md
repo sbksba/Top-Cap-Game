@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Your bug fixes go here.
 
+## [1.0.0-alpha.3] - 2025-08-17
+
+### Fixed
+
+- **Docker Release Workflow:** Fixed an issue where the `latest` tag was not being applied to the Docker image on tag push, leading to a `manifest unknown` error in the GitHub Container Registry. The `docker/metadata-action` step has been corrected to ensure the `latest` tag is always applied when a new version tag is pushed.
+
 ## [1.0.0-alpha.2] - 2025-08-17
 
 ### Changed
