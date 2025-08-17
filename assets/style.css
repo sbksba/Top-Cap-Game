@@ -1,0 +1,50 @@
+/* Custom styles to enhance the look and feel */
+body {
+    font-family: 'Inter', sans-serif;
+}
+.board-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-template-rows: repeat(7, 1fr);
+    gap: 2px;
+    aspect-ratio: 1 / 1;
+}
+.cell {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+}
+.cell.highlight {
+    border: 3px solid yellow;
+    box-shadow: 0 0 10px yellow;
+}
+.piece {
+    width: 80%;
+    height: 80%;
+    border-radius: 9999px; /* Tailwind's rounded-full */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.piece:hover {
+    transform: scale(1.1);
+}
+.piece.p1 {
+    background-color: #ef4444; /* Tailwind's red-500 */
+}
+.piece.p2 {
+    background-color: #3b82f6; /* Tailwind's blue-500 */
+}
+/* Modal-specific styles */
+.modal {
+    background-color: rgba(0, 0, 0, 0.75);
+}
+/* Game Mode Selection styles */
+.game-mode-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
