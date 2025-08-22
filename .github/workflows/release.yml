@@ -1,13 +1,18 @@
 name: Release CI/CD
-
 on:
   push:
     tags:
       - 'v*.*.*'
-
+  workflow_dispatch:  # Manual trigger
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: write
+  packages: write
+  attestations: write
+  id-token: write
 
 jobs:
   build_and_release:
@@ -21,11 +26,23 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          install: true
 
-      - name: Log in to the Container registry
+      - name: Log in to Container registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -46,8 +63,6 @@ jobs:
             org.opencontainers.image.description=A Rust-powered Top-Cap web game.
             org.opencontainers.image.licenses=MIT
 
-      # Extracts release notes for the current version from CHANGELOG.md.
-      # This step uses 'awk' to find the relevant section based on the Git tag.
       - name: Extract Release Notes from CHANGELOG.md
         id: get_release_notes
         run: |
@@ -59,9 +74,8 @@ jobs:
             /^## \[/{
               if ($0 ~ "^## \\[" version "\\]") {
                 found_version = 1;
-                next; # Skip the version header itself
+                next;
               } else if (found_version == 1) {
-                # Found the next version header, so stop
                 exit;
               }
             }
@@ -69,40 +83,41 @@ jobs:
           ' CHANGELOG.md)
 
           if [ -z "$(echo "$RELEASE_BODY" | tr -d '[:space:]')" ]; then
-            echo "Warning: No specific release notes found for version ${VERSION_NO_V} in CHANGELOG.md. Using a generic message."
-            RELEASE_BODY="## Release ${{ github.ref }}\n\nNo specific release notes found in CHANGELOG.md for this version. Please see commit history for details."
+            echo "::error::No release notes found for version $VERSION_NO_V in CHANGELOG.md. Please add release notes."
+            exit 1
           fi
 
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
           echo "$RELEASE_BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-        shell: bash # Ensure bash is used for the shell commands
+        shell: bash
 
-      # Creates a GitHub Release for the pushed tag.
-      # IMPORTANT: 'draft: false' ensures the release is published immediately,
-      # which is crucial for the GITHUB_TOKEN to have full write permissions for packages.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2 # Uses the latest v2 of release action
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: ${{ steps.get_release_notes.outputs.release_body }}
-          draft: false # Ensures the release is published, not a draft.
+          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (multi-arch)
         id: push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v1
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      - name: Cleanup Docker images
+        run: docker image prune -af
