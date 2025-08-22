@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Your bug fixes go here.
 
+## [1.0.0-alpha.4] - 2025-08-22
+
+### Changed
+
+- **Release Workflow:** Improved CI/CD pipeline with multi-architecture Docker builds (amd64 and arm64), added Docker caching to speed up builds, and enforced presence of release notes with workflow failure on missing notes. Optimized tagging strategy to ensure consistent `latest` tag application.
+
 ## [1.0.0-alpha.3] - 2025-08-17
 
 ### Fixed
