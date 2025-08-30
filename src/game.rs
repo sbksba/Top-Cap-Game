@@ -1,3 +1,4 @@
+use crate::constants::{BOARD_SIZE, GOAL_P1, GOAL_P2, P1_START, P2_START};
 use serde::{Deserialize, Serialize};
 
 // --- DATA STRUCTURES ---
@@ -42,7 +43,7 @@ pub struct MoveRequest {
 // Main game structure
 #[derive(Debug, Serialize, Clone)]
 pub struct Game {
-    pub board: [[Option<Player>; 7]; 7],
+    pub board: [[Option<Player>; BOARD_SIZE]; BOARD_SIZE],
     pub current_player: Player,
     pub status: GameStatus,
 }
@@ -52,19 +53,17 @@ pub struct Game {
 impl Game {
     // Creates a new game
     pub fn new() -> Self {
-        let mut board = [[None; 7]; 7];
+        let mut board = [[None; BOARD_SIZE]; BOARD_SIZE];
 
-        // Player 1's starting positions (near corner A1 / 0,0)
-        board[0][3] = Some(Player::P1);
-        board[1][2] = Some(Player::P1);
-        board[2][1] = Some(Player::P1);
-        board[3][0] = Some(Player::P1);
+        // ---- Place P1 -------------------------------------------------------
+        for &(r, c) in P1_START.iter() {
+            board[r][c] = Some(Player::P1);
+        }
 
-        // Player 2's starting positions (near corner G7 / 6,6)
-        board[3][6] = Some(Player::P2);
-        board[4][5] = Some(Player::P2);
-        board[5][4] = Some(Player::P2);
-        board[6][3] = Some(Player::P2);
+        // ---- Place P2 -------------------------------------------------------
+        for &(r, c) in P2_START.iter() {
+            board[r][c] = Some(Player::P2);
+        }
 
         Game {
             board,
@@ -76,8 +75,14 @@ impl Game {
     // Returns the position of the base ("bottle") for a given player
     pub fn get_goal_pos(player: Player) -> Position {
         match player {
-            Player::P1 => Position { row: 0, col: 0 },
-            Player::P2 => Position { row: 6, col: 6 },
+            Player::P1 => Position {
+                row: GOAL_P1.0,
+                col: GOAL_P1.1,
+            },
+            Player::P2 => Position {
+                row: GOAL_P2.0,
+                col: GOAL_P2.1,
+            },
         }
     }
 
@@ -153,8 +158,8 @@ impl Game {
 
     /// Checks if a player has at least one valid move on the entire board.
     pub fn has_any_valid_moves(&self, player: Player) -> bool {
-        for r in 0..7 {
-            for c in 0..7 {
+        for r in 0..BOARD_SIZE {
+            for c in 0..BOARD_SIZE {
                 if self.board[r][c] == Some(player)
                     && !self
                         .get_valid_moves_for_piece(Position { row: r, col: c })
@@ -234,7 +239,8 @@ impl Game {
 
     /// Checks if coordinates (as i8 for calculations) are on the board.
     fn is_on_board(row: isize, col: isize) -> bool {
-        (0..7).contains(&row) && (0..7).contains(&col)
+        let max = BOARD_SIZE as isize;
+        (0..max).contains(&row) && (0..max).contains(&col)
     }
 }
 
@@ -242,113 +248,207 @@ impl Game {
 mod tests {
     use super::*;
 
+    // Helper – creates a fresh game with the standard initial placement
     fn setup_game() -> Game {
         Game::new()
     }
 
+    // Initial board layout
     #[test]
     fn test_initial_board_setup() {
         let game = setup_game();
-        assert_eq!(game.board[0][3], Some(Player::P1));
-        assert_eq!(game.board[3][0], Some(Player::P1));
-        assert_eq!(game.board[3][6], Some(Player::P2));
-        assert_eq!(game.board[6][3], Some(Player::P2));
+
+        // Verify the four P1 pieces
+        for &(r, c) in crate::constants::P1_START.iter() {
+            assert_eq!(
+                game.board[r][c],
+                Some(Player::P1),
+                "P1 should be at ({},{})",
+                r,
+                c
+            );
+        }
+
+        // Verify the four P2 pieces
+        for &(r, c) in crate::constants::P2_START.iter() {
+            assert_eq!(
+                game.board[r][c],
+                Some(Player::P2),
+                "P2 should be at ({},{})",
+                r,
+                c
+            );
+        }
+
+        // Ensure an arbitrary empty square (e.g., top‑left corner) is indeed empty
         assert_eq!(game.board[0][0], None);
     }
 
+    // The first turn belongs to P1
     #[test]
     fn test_initial_turn_is_p1() {
         let game = setup_game();
         assert_eq!(game.current_player, Player::P1);
     }
 
+    // Neighbor counting – using the predefined start positions
     #[test]
     fn test_count_neighbors() {
         let game = setup_game();
 
-        // Piece at (0,3) has 1 neighbor at (1,2)
+        // (0,3) has exactly one neighbor at (1,2)
         let pos = Position { row: 0, col: 3 };
         assert_eq!(game.count_neighbors(pos), 1);
 
-        // Piece at (3,0) has 1 neighbor at (2,1)
+        // (3,0) has exactly one neighbor at (2,1)
         let pos = Position { row: 3, col: 0 };
         assert_eq!(game.count_neighbors(pos), 1);
 
-        // Piece at (2,1) has 2 neighbors from the initial setup
+        // (2,1) has two neighbors ((1,2) and (3,0))
         let pos = Position { row: 2, col: 1 };
         assert_eq!(game.count_neighbors(pos), 2);
     }
 
+    // Valid move (single step left)
     #[test]
     fn test_valid_move() {
         let mut game = setup_game();
         let from = Position { row: 0, col: 3 };
-        let to = Position { row: 0, col: 2 };
+        let to = Position { row: 0, col: 2 }; // one step left
 
         let result = game.make_move(from, to);
         assert!(result.is_ok());
+
+        // Origin must become empty
         assert_eq!(game.board[from.row][from.col], None);
+        // Destination must contain P1's piece
         assert_eq!(game.board[to.row][to.col], Some(Player::P1));
+
+        // Turn should switch to P2
         assert_eq!(game.current_player, Player::P2);
     }
 
+    // Invalid move – destination already occupied
     #[test]
     fn test_invalid_move_occupied_destination() {
         let mut game = setup_game();
         let from = Position { row: 0, col: 3 };
+        // (1,2) is already occupied by P1 at the start
         let to = Position { row: 1, col: 2 };
+
         let result = game.make_move(from, to);
         assert!(result.is_err());
     }
 
+    // Victory by reaching the opponent's goal square
     #[test]
-    fn test_win_by_reaching_goal() {
+    fn test_win_by_reaching_goal_corrected() {
         let mut game = setup_game();
         game.current_player = Player::P1;
 
-        // Manually set up the board for P1 to win in one move to the opponent's goal (6,6)
-        game.board = [[None; 7]; 7];
-        let from = Position { row: 3, col: 3 };
-        game.board[from.row][from.col] = Some(Player::P1);
+        let goal = Position {
+            row: crate::constants::GOAL_P2.0,
+            col: crate::constants::GOAL_P2.1,
+        };
 
-        // Add 3 neighbors to the piece at (3,3) so it can move 3 steps
-        game.board[2][2] = Some(Player::P2);
-        game.board[2][4] = Some(Player::P2);
-        game.board[4][2] = Some(Player::P2);
+        // Choose a start square that is aligned with the goal
+        //    (same diagonal, same row, or same column)
+        // We walk backwards along the diagonal from the goal until we stay
+        // inside the board.
+        let mut offset = 1usize;
+        let start = loop {
+            if goal.row >= offset && goal.col >= offset {
+                break Position {
+                    row: goal.row - offset,
+                    col: goal.col - offset,
+                };
+            }
+            offset += 1;
+            if offset > BOARD_SIZE {
+                panic!("Unable to find a start square aligned with the goal");
+            }
+        };
 
-        let to = Position { row: 6, col: 6 };
+        game.board = [[None; BOARD_SIZE]; BOARD_SIZE];
+        game.board[start.row][start.col] = Some(Player::P1);
 
-        let result = game.make_move(from, to);
+        // Determine how many squares the piece will travel.
+        // This is also the exact number of adjacent opponent pieces required.
+        let steps = ((goal.row as isize - start.row as isize).abs())
+            .max((goal.col as isize - start.col as isize).abs()) as usize;
 
-        // The move is valid and results in a win
-        assert!(result.is_ok());
-        assert_eq!(game.status, GameStatus::Won(Player::P1));
+        // Place exactly `steps` Player 2 pieces around the start piece
+        let mut placed = 0usize;
+        for dr in -1..=1 {
+            for dc in -1..=1 {
+                if dr == 0 && dc == 0 {
+                    continue;
+                }
+                let r = (start.row as isize + dr) as usize;
+                let c = (start.col as isize + dc) as usize;
+                if r < BOARD_SIZE && c < BOARD_SIZE && placed < steps {
+                    game.board[r][c] = Some(Player::P2);
+                    placed += 1;
+                }
+            }
+        }
+
+        // If, for some reason, `steps` exceeds the eight possible neighbours
+        // (this can only happen on extremely small boards), fill the remaining
+        // required pieces along the same row.
+        let mut extra = 0usize;
+        while placed < steps {
+            let r = start.row;
+            let c = (start.col + extra + 1) % BOARD_SIZE;
+            if game.board[r][c].is_none() {
+                game.board[r][c] = Some(Player::P2);
+                placed += 1;
+            }
+            extra += 1;
+        }
+
+        assert!(
+            game.board[goal.row][goal.col].is_none(),
+            "Goal square was already occupied"
+        );
+
+        let result = game.make_move(start, goal);
+        assert!(
+            result.is_ok(),
+            "The move should have been accepted, but it failed: {:?}",
+            result.err()
+        );
+        assert_eq!(
+            game.status,
+            GameStatus::Won(Player::P1),
+            "After reaching the opponent’s goal, the game status should be Won(P1)"
+        );
     }
 
+    // Victory because the opponent has no legal moves left
     #[test]
     fn test_win_by_opponent_no_moves() {
         let mut game = setup_game();
         game.current_player = Player::P1;
 
-        // Set up a simple scenario where P2 has no valid moves.
-        // P2's only piece is in a corner and surrounded.
-        game.board = [[None; 7]; 7];
-        game.board[0][0] = Some(Player::P2);
+        // Build a situation where P2 cannot move at all.
+        // Place P2 in the top‑left corner and surround it with P1 pieces.
+        game.board = [[None; BOARD_SIZE]; BOARD_SIZE];
+        game.board[0][0] = Some(Player::P2); // corner
         game.board[0][1] = Some(Player::P1);
         game.board[1][0] = Some(Player::P1);
         game.board[1][1] = Some(Player::P1);
 
-        // P1 makes a valid move. P1 piece at (3,0) moves to (4,0).
+        // Perform a valid move for P1 (e.g., (3,0) → (4,0))
         game.board[3][0] = Some(Player::P1);
         game.board[2][1] = Some(Player::P1);
         let from = Position { row: 3, col: 0 };
         let to = Position { row: 4, col: 0 };
 
         let result = game.make_move(from, to);
-
-        // The move is valid. The win condition should now be triggered
-        // because P2 has no moves left.
         assert!(result.is_ok());
+
+        // After this move, P2 has no possible moves → P1 wins
         assert_eq!(game.status, GameStatus::Won(Player::P1));
     }
 }

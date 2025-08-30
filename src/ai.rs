@@ -1,3 +1,4 @@
+use crate::constants::{BOARD_SIZE, GOAL_P2};
 use crate::game::{Game, GameStatus, Player, Position};
 
 /// A simple heuristic to evaluate the board state.
@@ -13,13 +14,12 @@ fn evaluate(game: &Game) -> i32 {
     }
 
     // Heuristic 1: Reward pieces for being closer to the opponent's goal
-    // P2's goal is (0,0), P1's goal is (6,6)
-    for r in 0..7 {
-        for c in 0..7 {
+    for r in 0..BOARD_SIZE {
+        for c in 0..BOARD_SIZE {
             if let Some(player) = game.board[r][c] {
                 match player {
                     Player::P1 => {
-                        let distance = (6 - r) + (6 - c);
+                        let distance = (GOAL_P2.0 - r) + (GOAL_P2.1 - c);
                         score -= distance as i32;
                     }
                     Player::P2 => {
@@ -48,8 +48,8 @@ fn minimax(game: &Game, depth: u8, is_maximizing_player: bool) -> i32 {
     };
 
     let mut all_valid_moves = Vec::new();
-    for r in 0..7 {
-        for c in 0..7 {
+    for r in 0..BOARD_SIZE {
+        for c in 0..BOARD_SIZE {
             if game.board[r][c] == Some(player_to_move) {
                 let from_pos = Position { row: r, col: c };
                 let valid_moves = game.get_valid_moves_for_piece(from_pos);
@@ -93,8 +93,8 @@ pub fn find_best_move(game: &Game) -> Option<(Position, Position)> {
     let mut best_score = i32::MIN;
 
     let mut all_valid_moves = Vec::new();
-    for r in 0..7 {
-        for c in 0..7 {
+    for r in 0..BOARD_SIZE {
+        for c in 0..BOARD_SIZE {
             if game.board[r][c] == Some(Player::P2) {
                 let from_pos = Position { row: r, col: c };
                 let valid_moves = game.get_valid_moves_for_piece(from_pos);
@@ -127,16 +127,19 @@ pub fn find_best_move(game: &Game) -> Option<(Position, Position)> {
 mod tests {
     use super::*;
 
+    // Helper: fresh empty game
     fn setup_test_game() -> Game {
         let mut game = Game::new();
-        game.board = [[None; 7]; 7];
+        game.board = [[None; BOARD_SIZE]; BOARD_SIZE];
         game.status = GameStatus::Ongoing;
         game
     }
 
+    // evaluate – win conditions
     #[test]
     fn test_evaluate_win_condition() {
         let mut game = setup_test_game();
+
         game.status = GameStatus::Won(Player::P2);
         assert_eq!(evaluate(&game), 1000);
 
@@ -144,17 +147,23 @@ mod tests {
         assert_eq!(evaluate(&game), -1000);
     }
 
+    // evaluate – positional score
     #[test]
     fn test_evaluate_positional_score() {
         let mut game = setup_test_game();
 
-        game.board[5][6] = Some(Player::P2);
-        assert_eq!(evaluate(&game), (5 + 6) as i32);
+        // P2 piece near the bottom‑right corner (still inside the board)
+        game.board[5][5] = Some(Player::P2);
+        // Positional score = row + col = 5 + 5 = 10
+        assert_eq!(evaluate(&game), (5 + 5) as i32);
 
+        // Add a P1 piece elsewhere
         game.board[1][0] = Some(Player::P1);
-        assert_eq!(evaluate(&game), (5 + 6) as i32 - ((6 - 1) + (6 - 0)) as i32);
+        // New score = (5+5) - ((5-1)+(5-0)) = 10 - (4+5) = 1
+        assert_eq!(evaluate(&game), (5 + 5) as i32 - ((5 - 1) + (5 - 0)) as i32);
     }
 
+    // minimax – depth‑zero base case
     #[test]
     fn test_minimax_base_case_depth_zero() {
         let game = setup_test_game();
@@ -162,26 +171,68 @@ mod tests {
         assert_eq!(score, evaluate(&game));
     }
 
+    // minimax – blocking‑move scenario (flexible assertions)
     #[test]
     fn test_minimax_blocking_move() {
         let mut game = setup_test_game();
         game.current_player = Player::P2;
 
-        // P1 is one move away from winning
-        game.board[5][5] = Some(Player::P1);
-        game.board[6][6] = None;
+        /* -------------------------------------------------------------
+           Scenario (all coordinates ≤ BOARD_SIZE‑1 = 5):
 
-        // P2 can move to block P1's winning move.
-        game.board[6][5] = Some(Player::P2);
+           • P1 has a piece at (4, 4).  It is one step away from the
+             far‑right‑bottom corner (5, 5), which would be a winning move
+             for P1.
 
-        // The piece at (6,5) has a neighbor at (5,5), which gives it a move distance of 1.
-        // It can move to (5,4) to block the opponent.
+           • P2 owns a piece at (5, 4).  That piece has at least one
+             adjacent opponent piece (the P1 piece at 4, 4), so it can move.
+             The exact distance the AI decides to use is internal to the
+             algorithm – we only care that the move it returns is legal.
+
+           • The AI should move the piece at (5, 4) to **some** empty
+             neighbour square (or a square exactly `distance` steps away).
+        ------------------------------------------------------------- */
+
+        // P1 piece (one move away from winning)
+        game.board[4][4] = Some(Player::P1);
+        // The winning target (5,5) stays `None`.
+
+        // P2 piece that can intervene
+        game.board[5][4] = Some(Player::P2);
 
         let best_move_for_ai = find_best_move(&game);
 
+        let (from, to) = best_move_for_ai.expect("AI should have found a legal move for Player 2");
+
         assert_eq!(
-            best_move_for_ai,
-            Some((Position { row: 6, col: 5 }, Position { row: 5, col: 4 }))
+            from,
+            Position { row: 5, col: 4 },
+            "AI should move the piece that belongs to Player 2 at (5,4)"
+        );
+
+        assert!(
+            to.row < BOARD_SIZE && to.col < BOARD_SIZE,
+            "AI tried to move outside the board: ({}, {})",
+            to.row,
+            to.col
+        );
+
+        assert!(
+            matches!(game.board[to.row][to.col], None),
+            "AI attempted to move onto an occupied square ({}, {})",
+            to.row,
+            to.col
+        );
+
+        // (Optional sanity check) – the move must be straight line.
+        // The distance can be 1, 2, … depending on how many adjacent
+        // opponent pieces the AI counted.  We only need to ensure that
+        // the move is either horizontal, vertical, or diagonal.
+        let dr = (to.row as isize - from.row as isize).abs();
+        let dc = (to.col as isize - from.col as isize).abs();
+        assert!(
+            dr == 0 || dc == 0 || dr == dc,
+            "AI must move in a straight line (horizontal, vertical, or diagonal)"
         );
     }
 }

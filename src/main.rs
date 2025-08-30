@@ -15,8 +15,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // Declare the game and AI modules
 mod ai;
+mod constants;
 mod game;
 
+use crate::constants::BOARD_SIZE;
 use game::{Game, GameStatus, MoveRequest, Player};
 
 // --- AXUM ROUTES & HANDLERS ---
@@ -26,6 +28,19 @@ type AppState = Arc<Mutex<Game>>;
 async fn index() -> impl axum::response::IntoResponse {
     info!("GET / requested.");
     "Visit /board to see the game state."
+}
+
+#[derive(serde::Serialize)]
+struct ConfigResponse {
+    board_size: usize,
+}
+
+// GET /api/config → {"boardSize":BOARD_SIZE}
+async fn get_config() -> Json<ConfigResponse> {
+    info!("GET /api/config requested.");
+    Json(ConfigResponse {
+        board_size: BOARD_SIZE,
+    })
 }
 
 // Handles GET /board request. Returns the current game state as JSON.
@@ -133,6 +148,7 @@ async fn main() {
     let serve_dir = ServeDir::new("assets").not_found_service(ServeFile::new("assets/index.html"));
     let app = Router::new()
         .route("/", get(index))
+        .route("/api/config", get(get_config))
         .route("/board", get(get_board))
         .route("/move", post(make_move))
         .route("/ai-move", post(make_ai_move))
