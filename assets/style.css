@@ -4,8 +4,8 @@ body {
 }
 .board-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    grid-template-rows: repeat(7, 1fr);
+    grid-template-columns: repeat(var(--board-size, 6), 1fr);
+    grid-template-rows:    repeat(var(--board-size, 6), 1fr);
     gap: 2px;
     aspect-ratio: 1 / 1;
 }

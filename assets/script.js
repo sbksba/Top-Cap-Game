@@ -2,6 +2,7 @@ const API_URL = "http://127.0.0.1:3000";
 let selectedPiece = null;
 let currentPlayer = null;
 let gameMode = 'two-player'; // Default to two-player mode
+let BOARD_SIZE = 6; // fallback – will be overwritten as soon as we get the real value
 
 // UI Elements
 const boardElement = document.getElementById('gameBoard');
@@ -40,6 +41,23 @@ function showMessage(text, type = 'info') {
         messageBox.style.display = 'none';
     }, 3000);
 }
+
+// Fetch the configuration (board size) once on startup
+async function fetchConfig() {
+    try {
+        const resp = await fetch(`${API_URL}/api/config`);
+        if (!resp.ok) throw new Error(`status ${resp.status}`);
+        const cfg = await resp.json();
+        BOARD_SIZE = cfg.board_size ?? BOARD_SIZE;
+        // Push the size to CSS (see step 3)
+        document.documentElement.style.setProperty('--board-size', BOARD_SIZE);
+    } catch (e) {
+        console.error("Could not fetch config, using default size", e);
+        // Still set the CSS variable so the grid works with the fallback
+        document.documentElement.style.setProperty('--board-size', BOARD_SIZE);
+    }
+}
+
 
 // Fetches the current game state from the Rust server
 async function fetchBoardState() {
@@ -218,8 +236,7 @@ twoPlayerModeButton.addEventListener('click', () => {
     fetchBoardState();
 });
 
-// Initial check on page load
-document.addEventListener('DOMContentLoaded', () => {
-    // Show the rules modal first
+(async () => {
+    await fetchConfig();
     rulesModal.style.display = 'flex';
-});
+})();
